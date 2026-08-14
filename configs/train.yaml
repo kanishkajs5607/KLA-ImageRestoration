@@ -1,0 +1,41 @@
+experiment:
+  name: sem_residual_unet
+  seed: 42
+  deterministic: false
+
+device: auto
+
+model:
+  name: residual_unet
+  in_channels: 3
+  base_channels: 32
+
+data:
+  train_input_dir: data/train/NoisyLR
+  train_target_dir: data/train/GT
+  val_input_dir: data/val/NoisyLR
+  val_target_dir: data/val/GT
+  patch_size: 256
+  validation_patch_size: 256
+  augment: true
+  num_workers: 0
+  pin_memory: true
+
+training:
+  epochs: 25
+  batch_size: 2
+  learning_rate: 0.0002
+  weight_decay: 0.00001
+  checkpoint_dir: checkpoints
+  results_dir: results
+  save_every: 5
+
+loss:
+  charbonnier_weight: 1.0
+  gradient_weight: 0.1
+  perceptual_weight: 0.0
+  lpips_network: alex
+
+inference:
+  upscale_factor: 1
+  pad_multiple: 4
