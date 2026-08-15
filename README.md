@@ -1,6 +1,6 @@
 # KLA SEM Image Restoration
 
-This repository contains a **runnable, CPU-compatible image-restoration pipeline** for paired semiconductor SEM-style images. The pipeline learns to map a degraded, noisy low-resolution observation (`NoisyLR`) to a clean ground-truth image (`GT`). It includes synthetic data generation for local development, training, standalone directory inference, and paired validation.
+This repository contains a **runnable, CPU-compatible image-restoration pipeline** for paired semiconductor SEM-style images. The pipeline learns to map a degraded, noisy low-resolution observation (`NoisyLR`) to a clean ground-truth image (`GT`). It includes synthetic data generation for local development, training, standalone directory inference, paired validation, and an interactive local web interface.
 
 > **Important:** the generated SEM images in this repository are synthetic development data. They are not official KLA competition data and must not be represented as such.
 
@@ -22,6 +22,7 @@ The program loads a checkpoint, processes every supported image in the input dir
 | Training size | Random aligned patches, while source images remain 1024×1024 |
 | Validation | PSNR and SSIM; LPIPS is optional on explicit request |
 | Runtime | CPU by default when CUDA is unavailable; CUDA used automatically when available |
+| Interactive UI | Streamlit upload, preview, restore, comparison, download, and reset workflow |
 | Reproducibility | YAML configuration, seeds, CSV logs, saved checkpoints, and checkpoint metadata |
 
 ## Repository layout
@@ -36,10 +37,12 @@ KLA-ImageRestoration/
 │   ├── metrics/image_metrics.py   # PSNR, SSIM, optional LPIPS metric
 │   ├── models/residual_unet.py    # Residual U-Net architecture
 │   └── utils/                     # Image I/O, checkpoints, runtime helpers
+├── app.py                          # Interactive Streamlit application
 ├── generate_sem_dataset.py        # Synthetic 1024×1024 paired-data generator
 ├── train.py                       # Training and checkpointing command
 ├── inference.py                   # Standalone directory inference command
 ├── evaluate.py                    # Paired validation metrics command
+├── tests/test_pipeline.py         # Automated pipeline tests
 ├── requirements.txt
 └── README.md
 ```
@@ -147,6 +150,20 @@ The default loss is a weighted combination of a Charbonnier reconstruction loss 
 | Gradient L1 | 0.1 | Preserve structural edge detail |
 | LPIPS | 0.0 | Optional perceptual similarity term |
 
+## Interactive application
+
+The repository includes a local Streamlit interface for interactive testing. It lets a user upload a JPG, JPEG, or PNG image, preview the original, start restoration, see a loading indicator, compare the original and restored images side by side, download a restored PNG, and reset the upload control.
+
+Start it from the repository root after training a checkpoint:
+
+```bash
+streamlit run app.py
+```
+
+The browser UI defaults to `checkpoints/best_model.pth`, automatically selects CUDA when available, and otherwise runs on CPU. The sidebar allows the checkpoint path, device selection, upscale factor, and maximum input dimension to be changed without editing source code. Very large uploads are resized down to the configured maximum dimension before inference to limit local memory usage. Invalid, corrupted, unsupported, or missing images and checkpoints produce user-facing error messages instead of an unhandled traceback.
+
+The UI is a local application intended for development and demonstration. It does not upload images to an external service and does not require an API key.
+
 ## Standalone inference
 
 After training creates `checkpoints/best_model.pth`, restore an input directory with:
@@ -223,6 +240,16 @@ path/to/official_data/
 Then update the four paths in `configs/train.yaml`. Preserve matching filenames. The data loader validates filename equality and raises an explicit error if an input has no matching target or vice versa. For official hidden test data, use `inference.py` only; no targets are needed and the script automatically creates the output directory.
 
 If externally sourced datasets, pretrained models, or weights are added for a competition submission, document their name, URL, license, and permitted use before submission.
+
+## Automated tests
+
+Run the focused tests after installing the requirements:
+
+```bash
+pytest -q
+```
+
+The test suite covers RGB image round-tripping, shape-safe padding, checkpoint/model loading, inference tensor dimensions, and restored output generation. It uses temporary files and a small randomly initialized checkpoint; it does not claim restoration quality and does not replace training and validation on official data.
 
 ## Reproducibility and experiment hygiene
 

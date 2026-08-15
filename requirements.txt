@@ -6,3 +6,5 @@ albumentations
 scikit-image
 pyyaml
 numpy
+streamlit
+pytest

@@ -76,7 +76,7 @@ def restore_batch(
     predictions = torch.clamp(model(batch), 0.0, 1.0).cpu()
     for prediction, original_size, source_path in zip(predictions, original_sizes, source_paths, strict=True):
         height, width = original_size
-        rgb = prediction[:, :height, :width].permute(1, 2, 0).numpy()
+        rgb = prediction[:, :height, :width].detach().permute(1, 2, 0).numpy()
         write_rgb_image(choose_output_path(output_dir, source_path, output_extension), rgb)
     return len(source_paths)
 
