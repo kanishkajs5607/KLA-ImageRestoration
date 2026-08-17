@@ -8,6 +8,7 @@ from typing import Any
 import torch
 
 from src.models.residual_unet import build_model
+from src.utils.runtime import optimize_model_for_inference
 
 
 def load_restoration_model(
@@ -22,5 +23,5 @@ def load_restoration_model(
         raise ValueError(f"Checkpoint at {path} is missing model weights or architecture metadata.")
     model = build_model(**checkpoint["model_config"]).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
-    model.eval()
+    model = optimize_model_for_inference(model, device)
     return model, checkpoint

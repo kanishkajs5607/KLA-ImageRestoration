@@ -30,10 +30,11 @@ The program loads a checkpoint, processes every supported image in the input dir
 ```text
 KLA-ImageRestoration/
 ├── configs/
-│   └── train.yaml                 # Default experiment configuration
+│   ├── train.yaml                 # Original/default experiment configuration
+│   └── train_sharp.yaml            # Isolated high-frequency candidate configuration
 ├── src/
 │   ├── datasets/paired_sem.py     # Lazy paired image loading and aligned patches
-│   ├── losses/restoration.py      # Charbonnier, gradient, optional LPIPS loss
+│   ├── losses/restoration.py      # Charbonnier, gradient, Laplacian, optional LPIPS
 │   ├── metrics/image_metrics.py   # PSNR, SSIM, optional LPIPS metric
 │   ├── models/residual_unet.py    # Residual U-Net architecture
 │   └── utils/                     # Image I/O, checkpoints, runtime helpers
@@ -142,12 +143,13 @@ The best checkpoint is selected by validation PSNR. Checkpoints include model ar
 
 ### Loss functions
 
-The default loss is a weighted combination of a Charbonnier reconstruction loss and a gradient loss. The Charbonnier term rewards pixel fidelity while being less sensitive to isolated high-error pixels than pure MSE. The gradient term encourages preservation of line and edge structure. LPIPS is implemented as an optional perceptual term but is disabled by default (`perceptual_weight: 0.0`) so that local CPU smoke tests do not unexpectedly require perceptual-network weights.
+The default loss is a weighted combination of a Charbonnier reconstruction loss and a gradient loss. The Charbonnier term rewards pixel fidelity while being less sensitive to isolated high-error pixels than pure MSE. The gradient term encourages preservation of line and edge structure. The optional Laplacian term matches local high-frequency responses during training; it is disabled in the original configuration and enabled conservatively in `configs/train_sharp.yaml`. It is a training objective, not an artificial sharpening filter applied after inference. LPIPS is implemented as an optional perceptual term but is disabled by default (`perceptual_weight: 0.0`) so that local CPU smoke tests do not unexpectedly require perceptual-network weights.
 
 | Loss | Default weight | Purpose |
 |---|---:|---|
 | Charbonnier | 1.0 | Robust pixel-level reconstruction |
-| Gradient L1 | 0.1 | Preserve structural edge detail |
+| Gradient L1 | 0.1 in the default config | Preserve structural edge detail |
+| Laplacian | 0.0 in the default config | Optional high-frequency response matching |
 | LPIPS | 0.0 | Optional perceptual similarity term |
 
 ## Interactive application
@@ -240,6 +242,26 @@ path/to/official_data/
 Then update the four paths in `configs/train.yaml`. Preserve matching filenames. The data loader validates filename equality and raises an explicit error if an input has no matching target or vice versa. For official hidden test data, use `inference.py` only; no targets are needed and the script automatically creates the output directory.
 
 If externally sourced datasets, pretrained models, or weights are added for a competition submission, document their name, URL, license, and permitted use before submission.
+
+## Sharpness experiment and checkpoint policy
+
+The new `configs/train_sharp.yaml` keeps the original two-level Residual U-Net but adds a conservative Laplacian loss weight of `0.05` and raises the first-order gradient weight to `0.15`. It writes to `checkpoints/sharp_experiment/` and `results/sharp_experiment/`, so the existing `checkpoints/best_model.pth` remains available as a fallback. Run the candidate experiment with:
+
+```bash
+python train.py --config configs/train_sharp.yaml --device cpu
+python evaluate.py \
+  --input_dir data/val/NoisyLR \
+  --target_dir data/val/GT \
+  --checkpoint checkpoints/sharp_experiment/best_model.pth \
+  --device cpu \
+  --output-json results/sharp_experiment/validation_metrics_full.json
+```
+
+Do not promote a candidate checkpoint to `checkpoints/best_model.pth` unless it has been evaluated on the same held-out validation set and is better on the project’s selected quality criteria. The repository’s measured local synthetic experiment produced a candidate result of 22.6855 dB PSNR and 0.788653 SSIM versus a same-schedule retrained original-loss baseline of 22.5919 dB and 0.765744 SSIM. These values are local synthetic-data measurements, not official KLA benchmark results, and the separate user-reported baseline of approximately 22.71 dB and 0.792 remains higher; therefore the fallback checkpoint was not replaced.
+
+## Inference performance
+
+The Streamlit model loader is cached with `st.cache_resource`, and both CLI and UI inference use `torch.inference_mode()`, `eval()` mode, and channels-last tensors for CPU convolution. The channels-last path was benchmarked on one full-resolution image before being enabled. On the local synthetic validation set, the optimized fallback path measured 2.551 seconds per image across ten images, compared with 3.359 seconds per image before the layout optimization. The candidate measured 2.520 seconds per image under the same optimized path. These timings include directory I/O and output writing for the CLI measurement and are hardware-specific; measure again on the target NVIDIA H100 and on the user’s Windows machine before making a competition throughput claim.
 
 ## Automated tests
 

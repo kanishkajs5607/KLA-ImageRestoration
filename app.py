@@ -13,7 +13,7 @@ from PIL import Image, UnidentifiedImageError
 
 from inference import _prepare_tensor
 from src.utils.checkpoints import load_restoration_model
-from src.utils.runtime import select_device
+from src.utils.runtime import prepare_inference_batch, select_device
 
 
 DEFAULT_CHECKPOINT = "checkpoints/best_model.pth"
@@ -79,7 +79,8 @@ def restore_uploaded_image(
     tensor, output_size = _prepare_tensor(image, upscale_factor, pad_multiple)
     started = time.perf_counter()
     with torch.inference_mode():
-        prediction = torch.clamp(model(tensor.unsqueeze(0).to(device)), 0.0, 1.0)[0].cpu()
+        batch = prepare_inference_batch(tensor.unsqueeze(0), device)
+        prediction = torch.clamp(model(batch), 0.0, 1.0)[0].cpu()
     elapsed = time.perf_counter() - started
     height, width = output_size
     restored = prediction[:, :height, :width].permute(1, 2, 0).numpy()

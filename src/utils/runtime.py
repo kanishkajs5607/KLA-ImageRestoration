@@ -72,3 +72,21 @@ class RunningAverage:
     @property
     def value(self) -> float:
         return self.total / max(self.count, 1)
+
+
+def optimize_model_for_inference(model: torch.nn.Module, device: torch.device) -> torch.nn.Module:
+    """Prepare a model for inference without changing its learned parameters."""
+    model.eval()
+    if device.type == "cpu":
+        # Channels-last is supported by the convolutional model and was benchmarked locally
+        # before being enabled here. It reduces CPU convolution overhead without altering outputs.
+        model = model.to(memory_format=torch.channels_last)
+    return model
+
+
+def prepare_inference_batch(batch: torch.Tensor, device: torch.device) -> torch.Tensor:
+    """Move an inference batch and match the model's CPU memory format."""
+    batch = batch.to(device, non_blocking=True)
+    if device.type == "cpu":
+        batch = batch.contiguous(memory_format=torch.channels_last)
+    return batch

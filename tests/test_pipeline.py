@@ -6,6 +6,7 @@ import numpy as np
 import torch
 
 from inference import _prepare_tensor, restore_batch
+from src.losses.restoration import RestorationLoss
 from src.models.residual_unet import build_model
 from src.utils.checkpoints import load_restoration_model
 from src.utils.image_io import read_rgb_image, write_rgb_image
@@ -41,6 +42,14 @@ def test_preprocessing_pads_to_model_multiple() -> None:
     tensor, original_size = _prepare_tensor(image, upscale_factor=1, pad_multiple=4)
     assert tuple(tensor.shape) == (3, 8, 12)
     assert original_size == (7, 9)
+
+
+def test_high_frequency_loss_is_finite() -> None:
+    prediction = torch.rand(1, 3, 16, 16)
+    target = torch.rand(1, 3, 16, 16)
+    loss, components = RestorationLoss(laplacian_weight=0.05)(prediction, target)
+    assert torch.isfinite(loss)
+    assert components["laplacian"] >= 0.0
 
 
 def test_checkpoint_model_loading(tmp_path: Path) -> None:

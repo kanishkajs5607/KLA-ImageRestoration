@@ -37,6 +37,23 @@ class GradientLoss(nn.Module):
         return functional.l1_loss(prediction_x, target_x) + functional.l1_loss(prediction_y, target_y)
 
 
+class LaplacianLoss(nn.Module):
+    """Match high-frequency responses without applying a sharpening filter at inference."""
+
+    def forward(self, prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        if prediction.shape != target.shape:
+            raise ValueError(
+                f"Prediction/target shape mismatch in Laplacian loss: {prediction.shape} vs {target.shape}"
+            )
+        channels = prediction.shape[1]
+        kernel = prediction.new_tensor(
+            [[0.0, 1.0, 0.0], [1.0, -4.0, 1.0], [0.0, 1.0, 0.0]]
+        ).view(1, 1, 3, 3).repeat(channels, 1, 1, 1)
+        prediction_laplacian = functional.conv2d(prediction, kernel, padding=1, groups=channels)
+        target_laplacian = functional.conv2d(target, kernel, padding=1, groups=channels)
+        return functional.l1_loss(prediction_laplacian, target_laplacian)
+
+
 class LPIPSPerceptualLoss(nn.Module):
     """Optional LPIPS term. It is only constructed when explicitly enabled in configuration."""
 
@@ -68,17 +85,20 @@ class RestorationLoss(nn.Module):
         self,
         charbonnier_weight: float = 1.0,
         gradient_weight: float = 0.1,
+        laplacian_weight: float = 0.0,
         perceptual_weight: float = 0.0,
         lpips_network: str = "alex",
     ) -> None:
         super().__init__()
-        if min(charbonnier_weight, gradient_weight, perceptual_weight) < 0:
+        if min(charbonnier_weight, gradient_weight, laplacian_weight, perceptual_weight) < 0:
             raise ValueError("Loss weights must be non-negative.")
         self.charbonnier_weight = charbonnier_weight
         self.gradient_weight = gradient_weight
+        self.laplacian_weight = laplacian_weight
         self.perceptual_weight = perceptual_weight
         self.charbonnier = CharbonnierLoss()
         self.gradient = GradientLoss()
+        self.laplacian = LaplacianLoss()
         self.perceptual = (
             LPIPSPerceptualLoss(lpips_network) if perceptual_weight > 0.0 else None
         )
@@ -90,8 +110,17 @@ class RestorationLoss(nn.Module):
             )
         reconstruction = self.charbonnier(prediction, target)
         edge = self.gradient(prediction, target)
-        total = self.charbonnier_weight * reconstruction + self.gradient_weight * edge
-        components = {"charbonnier": reconstruction.detach().item(), "gradient": edge.detach().item()}
+        high_frequency = self.laplacian(prediction, target)
+        total = (
+            self.charbonnier_weight * reconstruction
+            + self.gradient_weight * edge
+            + self.laplacian_weight * high_frequency
+        )
+        components = {
+            "charbonnier": reconstruction.detach().item(),
+            "gradient": edge.detach().item(),
+            "laplacian": high_frequency.detach().item(),
+        }
         if self.perceptual is not None:
             perceptual = self.perceptual(prediction, target)
             total = total + self.perceptual_weight * perceptual

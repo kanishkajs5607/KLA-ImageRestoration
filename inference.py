@@ -13,7 +13,7 @@ import torch.nn.functional as functional
 
 from src.utils.checkpoints import load_restoration_model
 from src.utils.image_io import choose_output_path, list_images, read_rgb_image, write_rgb_image
-from src.utils.runtime import ensure_directory, select_device
+from src.utils.runtime import ensure_directory, prepare_inference_batch, select_device
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,7 +72,7 @@ def restore_batch(
     device: torch.device,
 ) -> int:
     """Run a same-sized batch through the model and save each restored output."""
-    batch = torch.stack(tensors).to(device, non_blocking=True)
+    batch = prepare_inference_batch(torch.stack(tensors), device)
     predictions = torch.clamp(model(batch), 0.0, 1.0).cpu()
     for prediction, original_size, source_path in zip(predictions, original_sizes, source_paths, strict=True):
         height, width = original_size
